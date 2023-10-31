@@ -1,9 +1,15 @@
 from flask import Flask, request, jsonify, render_template
+from dotenv import load_dotenv, find_dotenv
+_ = load_dotenv(find_dotenv())
+from werkzeug.utils import secure_filename
 import openai
+import os
 import pdfplumber
 import pytesseract
 import docx
 import cv2
+import glob
+
 
 app = Flask(__name__)
 
@@ -11,7 +17,43 @@ app = Flask(__name__)
 def home():
     return render_template('index.html')
 
-openai.api_key = "KEY_OPEN_AI" #Precisa alterar 
+openai.api_key  = "OPENAI_KEY" # Substituir aqui a chave pessoal da openai
+
+UPLOAD_FOLDER = 'files'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)  
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+def extract_file_name(directory_path):
+    if os.path.exists(directory_path) and os.path.isdir(directory_path):
+        files = glob.glob(os.path.join(directory_path, '*'))
+        
+        if len(files) == 1:
+            file_name = os.path.basename(files[0])
+            file_name, _ = os.path.splitext(file_name)  
+            return file_name
+        else:
+            return None  
+    else:
+        return None
+
+def extract_file_extension(directory_path):
+    if os.path.exists(directory_path) and os.path.isdir(directory_path):
+        files = glob.glob(os.path.join(directory_path, '*'))
+        
+        if len(files) == 1:
+            _, file_extension = os.path.splitext(files[0])
+            return file_extension
+        else:
+            return None 
+    else:
+        return None
+
+def save_temp_file(file, file_name):
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], file_name)
+    file.save(file_path)
+    return file_path
 
 def get_completion(prompt, model="gpt-3.5-turbo"):
     messages = [{"role": "user", "content": prompt}]
@@ -27,58 +69,67 @@ def extract_text_from_txt(file_name):
     with open(f"files/{file_name}", "r", encoding="utf-8") as file:
         text = file.read()
     return text
-
 def extract_text_from_pdf(file_name):
     text = ""
-    with pdfplumber.open(file_name) as pdf:
+    with pdfplumber.open(f"files/{file_name}") as pdf:
         for page in pdf.pages:
             text += page.extract_text()
     return text 
 
 def extract_text_from_image(file_name):
     text = ""
-    image = cv2.imread(file_name)
+    image = cv2.imread(f"files/{file_name}")
 
-    pytesseract.pytesseract.tesseract_cmd = r"caminho\tesseract.exe" #Precisa alterar 
-    text = pytesseract.image_to_string(image, lang="por") 
+    pytesseract.pytesseract.tesseract_cmd = r"CAMINHO" # Substituir aqui o caminho do tesseract.exe
+    text = pytesseract.image_to_string(image, lang="por")
     return text 
 
 def extract_text_from_docx(file_name):
-    doc = docx.Document(file_name)
+    doc = docx.Document(f"files/{file_name}")
     text = ""
     for paragraph in doc.paragraphs:
         text += paragraph.text + "\n"
     return text
 
-@app.route('/resumir', methods=['POST'])
-def resumir():
-    base_name = request.form.get('fileName')
-    file_extension = request.form.get('fileExtension')
+@app.route('/uploadAndSummarize', methods=['POST'])
+def upload_and_summarize():
+    if 'fileInput' not in request.files:
+        return jsonify({"error": "No file part"})
 
-    if not base_name:
-        return jsonify({"summary": "O nome do arquivo não foi fornecido."})
+    file = request.files['fileInput']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"})
+
+    filename = secure_filename(file.filename)
+    file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+
+    new_filename = 'temporary' + os.path.splitext(filename)[1] 
+    os.rename(os.path.join(app.config['UPLOAD_FOLDER'], filename), os.path.join(app.config['UPLOAD_FOLDER'], new_filename))
+
+    type_summary = request.form.get('typeSummary')
 
     try:
-        if file_extension == "txt":
-            extracted_text = extract_text_from_txt(f"{base_name}.{file_extension}")
+        if new_filename.endswith(".txt"):
+            extracted_text = extract_text_from_txt(new_filename)
 
-        elif file_extension == "pdf":
-            extracted_text = extract_text_from_pdf(f"{base_name}.{file_extension}")
+        elif new_filename.endswith(".pdf"):
+            extracted_text = extract_text_from_pdf(new_filename)
 
-        elif file_extension == "png" or file_extension == "jpg":
-            extracted_text = extract_text_from_image(f"{base_name}.{file_extension}")
+        elif new_filename.endswith(".png") or new_filename.endswith(".jpg"):
+            extracted_text = extract_text_from_image(new_filename)
 
-        elif file_extension == "docx":
-            extracted_text = extract_text_from_docx(f"{base_name}.{file_extension}")
+        elif new_filename.endswith(".docx"):
+            extracted_text = extract_text_from_docx(new_filename)
 
-        prompt = f"""Summarize the text delimited by triple backticks into a single sentence in portuguese.
-        ```{extracted_text}```"""
+        prompt = f"""Your task is to extract relevant information from a text. Summarize the text below, delimited by triple backticks, in a maximum of 30 words, and the text generated by you must be of the type ```{type_summary}```Text: ```{extracted_text}```. 
+                """
 
         response = get_completion(prompt)
+        os.remove(os.path.join(app.config['UPLOAD_FOLDER'], new_filename))
         return jsonify({"summary": response})
 
     except FileNotFoundError:
-        return jsonify({"summary": f"O arquivo '{base_name}.{file_extension}' não foi encontrado."})
+        return jsonify({"summary": f"O arquivo '{new_filename}' não foi encontrado."})
     except Exception as e:
         return jsonify({"summary": f"Ocorreu um erro ao abrir o arquivo: {str(e)}"})
 

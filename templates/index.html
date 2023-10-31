@@ -1,84 +1,97 @@
 <!DOCTYPE html>
 <html>
-<head>
+  <head>
     <title>Gerador de Resumos</title>
+    <link
+      rel="stylesheet"
+      href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
+    />
     <style>
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-        }
+      #container {
+        background-color: #f5f5f5;
+        padding: 20px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        text-align: center;
+      }
 
-        #container {
-            background-color: #f5f5f5;
-            padding: 20px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            text-align: center;
-        }
-
-        #resultContainer {
-            display: none; 
-            background-color: #e0e0e0;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            margin-top: 10px;
-        }
+      #resultContainer {
+        display: none;
+        background-color: #e0e0e0;
+        padding: 10px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        margin-top: 10px;
+      }
     </style>
-</head>
-<body>
-    <div id="container">
-        <h1>Resumidor de Texto</h1>
-        <form id="fileForm" method="POST">
-            <label for="fileName">Nome do arquivo (sem a extensão):</label>
-            <input type="text" id="fileName" name="fileName">
-            <select id="fileExtension" name="fileExtension">
-                <option value="txt">.txt</option>
-                <option value="pdf">.pdf</option>
-                <option value="png">.png</option>
-                <option value="jpg">.jpg</option>
-                <option value="docx">.docx</option>
+  </head>
+  <body>
+    <div class="container mt-5">
+      <div class="card">
+        <div class="card-body">
+          <h1 class="card-title">Gerador de resumos</h1>
+          <form
+            id="uploadForm"
+            method="POST"
+            class="form-group"
+            enctype="multipart/form-data"
+          >
+            <label for="fileInput">Selecionar arquivo:</label>
+            <input
+              type="file"
+              id="fileInput"
+              name="fileInput"
+              class="form-control-file"
+            />
+            <label for="typeSummary">Tipo de resumo:</label>
+            <select id="typeSummary" name="typeSummary" class="form-control">
+              <option value="abstractive">Abstrativo</option>
+              <option value="summary">Pontos-chave</option>
             </select>
-            <button type="submit">Resumir</button>
-        </form>
-        <div id="resultContainer">
+            <button type="submit" class="btn btn-primary mt-3">Upload e Resumir</button>
+          </form>
+          <div id="resultContainer" class="mt-3">
             <div id="result">
-                <!-- O resumo gerado será exibido aqui -->
+              <!-- O resumo gerado será exibido aqui -->
             </div>
+          </div>
         </div>
+      </div>
     </div>
 
     <script>
-        const fileForm = document.getElementById("fileForm");
-        const resultContainer = document.getElementById("resultContainer");
-        const resultDiv = document.getElementById("result");
+      const uploadForm = document.getElementById("uploadForm");
+      const resultContainer = document.getElementById("resultContainer");
+      const resultDiv = document.getElementById("result");
 
-        fileForm.addEventListener("submit", async (event) => {
-            event.preventDefault();
+      uploadForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
 
-            const fileName = document.getElementById("fileName").value;
-            const fileExtension = document.getElementById("fileExtension").value;
+        const formData = new FormData(uploadForm);
+        const fileInput = document.getElementById("fileInput").files[0];
+        formData.append("fileInput", fileInput);
 
-            try {
-                const response = await fetch("/resumir", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/x-www-form-urlencoded"
-                    },
-                    body: `fileName=${fileName}&fileExtension=${fileExtension}`
-                });
+        const typeSummary = document.getElementById("typeSummary").value;
+        formData.append("typeSummary", typeSummary);
 
-                const data = await response.json();
-                resultDiv.innerHTML = data.summary;
-                resultContainer.style.display = "block"; 
-            } catch (error) {
-                console.error(error);
-                resultDiv.innerHTML = "Ocorreu um erro ao resumir o texto.";
-            }
-        });
+        try {
+          // Envio do formulário para upload e resumo
+          const response = await fetch("/uploadAndSummarize", {
+            method: "POST",
+            body: formData,
+          });
+
+          const data = await response.json();
+          resultDiv.innerHTML = data.summary;
+          resultContainer.style.display = "block";
+        } catch (error) {
+          console.error(error);
+          resultDiv.innerHTML = "Erro ao enviar o arquivo ou resumir o texto.";
+        }
+      });
     </script>
-</body>
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+  </body>
 </html>
